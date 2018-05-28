@@ -121,8 +121,10 @@ class KNearestNeighbor(object):
     # HINT: Try to formulate the l2 distance using matrix multiplication    #
     #       and two broadcast sums.                                         #
     #########################################################################
-    XX_train = np.tile(self.X_train, (num_test, 1, 1))
-    
+    sum_X2 = np.sum(np.square(X), axis=1)
+    sum_X_train2 = np.sum(np.square(self.X_train), axis=1)
+    dists = np.sqrt(sum_X2.reshape((num_test, 1)) + sum_X_train2 - 2 * X.dot(self.X_train.T))
+
     #########################################################################
     #                         END OF YOUR CODE                              #
     #########################################################################
@@ -154,7 +156,7 @@ class KNearestNeighbor(object):
       # neighbors. Store these labels in closest_y.                           #
       # Hint: Look up the function numpy.argsort.                             #
       #########################################################################
-      closest_y = self.y_train[dists[i].argsort()][:k]
+      closest_y = self.y_train[dists[i,:].argsort()][:k]
       #########################################################################
       # TODO:                                                                 #
       # Now that you have found the labels of the k nearest neighbors, you    #
