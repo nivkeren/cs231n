@@ -47,7 +47,7 @@ def softmax_loss_naive(W, X, y, reg):
   dW /= num_train
 
   # Add regularization to the loss.
-  loss += 0.5 * reg * np.sum(W * W)
+  loss += reg * np.sum(W * W)
   dW += 2 * reg * W
   #############################################################################
   #                          END OF YOUR CODE                                 #
@@ -72,6 +72,7 @@ def softmax_loss_vectorized(W, X, y, reg):
   # here, it is easy to run into numeric instability. Don't forget the        #
   # regularization!                                                           #
   #############################################################################
+  num_classes = W.shape[1]
   num_train = X.shape[0]
   coord_y = np.arange(num_train)
   
