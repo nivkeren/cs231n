@@ -178,7 +178,14 @@ def batchnorm_forward(x, gamma, beta, bn_param):
         # Referencing the original paper (https://arxiv.org/abs/1502.03167)   #
         # might prove to be helpful.                                          #
         #######################################################################
-        pass
+        sample_mean = x.mean(axis=0)
+        sample_var = x.var(axis=0)
+        x_head = (x - sample_mean) / np.sqrt(sample_var + eps)
+        out = gamma * x_head + beta
+
+        running_mean = momentum * running_mean + (1 - momentum) * sample_mean
+        running_var = momentum * running_var + (1 - momentum) * sample_var
+        cache = (x, x_head, sample_var, sample_mean, beta, gamma, eps)
         #######################################################################
         #                           END OF YOUR CODE                          #
         #######################################################################
@@ -189,7 +196,8 @@ def batchnorm_forward(x, gamma, beta, bn_param):
         # then scale and shift the normalized data using gamma and beta.      #
         # Store the result in the out variable.                               #
         #######################################################################
-        pass
+        x_head = (x - running_mean) / np.sqrt(running_var + eps)
+        out = gamma * x_head + beta
         #######################################################################
         #                          END OF YOUR CODE                           #
         #######################################################################
@@ -227,7 +235,17 @@ def batchnorm_backward(dout, cache):
     # Referencing the original paper (https://arxiv.org/abs/1502.03167)       #
     # might prove to be helpful.                                              #
     ###########################################################################
-    pass
+    x, x_head, sample_var, sample_mean, beta, gamma, eps = cache
+    N, D = dout.shape
+    dbeta = dout.sum(axis=0)
+    dgamma = (dout * x_head).sum(axis=0)
+    dx = dout * gamma * (((N-1) / N * np.sqrt(sample_var + eps))
+                         + N * x_head * (x - sample_mean + 1 / N + sample_mean / N)) / (sample_var + eps)
+    print(f"dbeta-{dbeta.shape}")
+    print(f"dgamma-{dgamma.shape}")
+    print(f"x_head-{x_head.shape}")
+    print(f"x-{x.shape}")
+
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
