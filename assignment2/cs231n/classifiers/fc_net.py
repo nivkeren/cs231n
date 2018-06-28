@@ -184,6 +184,9 @@ class FullyConnectedNet(object):
             self.params[f"W{i}"] = np.random.normal(0, weight_scale,
                                                     (hidden_dims[i - 1], hidden_dims[i]))
             self.params[f"b{i}"] = np.zeros(hidden_dims[i])
+            if normalization == "batchnorm":
+                self.params[f"beta{i}"] = np.zeros(hidden_dims[i])
+                self.params[f"gamma{i}"] = np.ones(hidden_dims[i])
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -242,19 +245,26 @@ class FullyConnectedNet(object):
         # self.bn_params[1] to the forward pass for the second batch normalization #
         # layer, etc.                                                              #
         ############################################################################
-        num_loop = 2
+        num_loop = 3
         num_all_layers = self.num_layers * num_loop
         outs = [None for i in range(num_all_layers)]
         caches = [None for i in range(num_all_layers)]
 
         outs[0] = X
-        for i in range(1, num_all_layers, 1):
+        for i in range(2, num_all_layers + 1, 1):
             if i % num_loop == 0 :
                 outs[i], caches[i] = relu_forward(outs[i - 1])
             elif i % num_loop == 1:
+                j = i // num_loop
+                outs[i], caches[i] = batchnorm_forward(outs[i - 1],
+                                                       self.params[f"beta{j}"],
+                                                       self.params[f"gamma{j}"],
+                                                       self.bn_params[j])
+            elif i % num_loop == 2:
+                j = i // num_loop + 1
                 outs[i], caches[i] = affine_forward(outs[i - 1],
-                                            self.params[f"W{i // num_loop + 1}"],
-                                            self.params[f"b{i // num_loop + 1}"])
+                                            self.params[f"W{j}"],
+                                            self.params[f"b{j}"])
         scores = outs[-1]
         ############################################################################
         #                             END OF YOUR CODE                             #
@@ -288,7 +298,6 @@ class FullyConnectedNet(object):
                 loss += 0.5 * self.reg * np.sum(self.params[f"W{j}"] * self.params[f"W{j}"])
                 grads[f"W{j}"] += self.reg * self.params[f"W{j}"]
             elif i % num_loop == 1:
-
                 douts[i] = relu_backward(douts[i + 1][0], caches[i + 1])
 
         ############################################################################
