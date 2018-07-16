@@ -165,6 +165,7 @@ class FullyConnectedNet(object):
         self.num_layers = 1 + len(hidden_dims)
         self.dtype = dtype
         self.params = {}
+        self.first = True
 
         ############################################################################
         # TODO: Initialize the parameters of the network, storing all values in    #
@@ -178,15 +179,17 @@ class FullyConnectedNet(object):
         # beta2, etc. Scale parameters should be initialized to ones and shift     #
         # parameters should be initialized to zeros.                               #
         ############################################################################
-        hidden_dims.insert(0, input_dim)
-        hidden_dims.append(num_classes)
+        self.hidden_dims = hidden_dims[:]
+        self.hidden_dims.insert(0, input_dim)
+        self.hidden_dims.append(num_classes)
         for i in range(1, self.num_layers + 1):
             self.params[f"W{i}"] = np.random.normal(0, weight_scale,
-                                                    (hidden_dims[i - 1], hidden_dims[i]))
-            self.params[f"b{i}"] = np.zeros(hidden_dims[i])
-            if normalization == "batchnorm" and i != self.num_layers:
-                self.params[f"beta{i}"] = np.zeros(hidden_dims[i])
-                self.params[f"gamma{i}"] = np.ones(hidden_dims[i])
+                                                    (self.hidden_dims[i - 1], self.hidden_dims[i]))
+            self.params[f"b{i}"] = np.zeros(self.hidden_dims[i])
+            if (self.normalization == "batchnorm" or self.normalization == "layernorm") and i != self.num_layers:
+                self.params[f"beta{i}"] = np.zeros(self.hidden_dims[i])
+                self.params[f"gamma{i}"] = np.ones(self.hidden_dims[i])
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -245,8 +248,9 @@ class FullyConnectedNet(object):
         # self.bn_params[1] to the forward pass for the second batch normalization #
         # layer, etc.                                                              #
         ############################################################################
-        num_loop = 2
-        num_all_layers = self.num_layers * num_loop
+
+        num_loop = 3
+        num_all_layers = self.num_layers * num_loop - 1
         outs = [None for i in range(num_all_layers)]
         caches = [None for i in range(num_all_layers)]
 
@@ -257,7 +261,7 @@ class FullyConnectedNet(object):
                 outs[i], caches[i] = affine_forward(outs[i - 1],
                                                     self.params[f"W{j}"],
                                                     self.params[f"b{j}"])
-            elif i % num_loop == 0:
+            elif i % num_loop == 2:
                 j = i // num_loop
                 if self.normalization == "batchnorm":
                    outs[i], caches[i] = \
@@ -265,10 +269,20 @@ class FullyConnectedNet(object):
                                                self.params[f"gamma{j}"],
                                                self.params[f"beta{j}"],
                                                self.bn_params[j - 1])
+                elif self.normalization == "layernorm":
+                    outs[i], caches[i] =\
+                        layernorm_relu_forward(outs[i - 1],
+                                               self.params[f"gamma{j}"],
+                                               self.params[f"beta{j}"],
+                                               self.bn_params[j - 1])
                 else:
                     outs[i], caches[i] = relu_forward(outs[i - 1])
+            elif i % num_loop == 0:
+                    if self.use_dropout:
+                        outs[i], caches[i] = dropout_forward(outs[i - 1], self.dropout_param)
+                    else:
+                        outs[i], caches[i] = outs[i - 1], caches[i - 1]
         scores = outs[-1]
-        self.first = False
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -301,13 +315,22 @@ class FullyConnectedNet(object):
                 _, grads[f"W{j}"], grads[f"b{j}"] = douts[i]
                 loss += 0.5 * self.reg * np.sum(self.params[f"W{j}"] * self.params[f"W{j}"])
                 grads[f"W{j}"] += self.reg * self.params[f"W{j}"]
-            elif i % num_loop == 0:
+            elif i % num_loop == 2:
                 j = i // num_loop
                 if self.normalization == "batchnorm":
                     douts[i] = batchnorm_relu_backward(douts[i + 1][0], caches[i])
                     _, grads[f"gamma{j}"], grads[f"beta{j}"] = douts[i]
+                elif self.normalization == "layernorm":
+                    douts[i] = layernorm_relu_backward(douts[i + 1][0], caches[i])
+                    _, grads[f"gamma{j}"], grads[f"beta{j}"] = douts[i]
                 else:
                     douts[i] = (relu_backward(douts[i + 1][0], caches[i]), )
+            elif i % num_loop == 0:
+                if self.use_dropout:
+                    douts[i] = (dropout_backward(douts[i + 1][0], caches[i]), )
+                else:
+                    douts[i] = douts[i + 1]
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -327,7 +350,7 @@ def batchnorm_relu_forward(x, gamma, beta, bn_params):
     - out: Output from the ReLU
     - cache: Object to give to the backward pass
     """
-    a, bn_cache = batchnorm_forward(x, beta, gamma, bn_params)
+    a, bn_cache = batchnorm_forward(x, gamma, beta, bn_params)
     out, relu_cache = relu_forward(a)
     cache = (bn_cache, relu_cache)
     return out, cache
@@ -339,5 +362,31 @@ def batchnorm_relu_backward(dout, cache):
     """
     bn_cache, relu_cache = cache
     da = relu_backward(dout, relu_cache)
-    dx, dbeta, dgamma = batchnorm_backward(da, bn_cache)
+    dx, dgamma, dbeta = batchnorm_backward(da, bn_cache)
+    return dx, dgamma, dbeta
+
+def layernorm_relu_forward(x, gamma, beta, bn_params):
+    """
+    Convenience layer that perorms a layernorm transform followed by a ReLU
+
+    Inputs:
+    - x: Input to the batchnorm layer
+    - beta, gamma, bn_params: Parameters for the batchnorm layer.
+
+    Returns a tuple of:
+    - out: Output from the ReLU
+    - cache: Object to give to the backward pass
+    """
+    a, ln_cache = layernorm_forward(x, gamma, beta, bn_params)
+    out, relu_cache = relu_forward(a)
+    cache = (ln_cache, relu_cache)
+    return out, cache
+
+def layernorm_relu_backward(dout, cache):
+    """
+    Backward pass for the batchnorm-relu convenience layer
+    """
+    ln_cache, relu_cache = cache
+    da = relu_backward(dout, relu_cache)
+    dx, dgamma, dbeta = layernorm_backward(da, ln_cache)
     return dx, dgamma, dbeta
