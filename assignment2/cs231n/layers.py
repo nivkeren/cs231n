@@ -434,7 +434,6 @@ def dropout_forward(x, dropout_param):
     output; this might be contrary to some sources, where it is referred to
     as the probability of dropping a neuron output.
     """
-    #print("DROP")
     p, mode = dropout_param['p'], dropout_param['mode']
     if 'seed' in dropout_param:
         np.random.seed(dropout_param['seed'])
@@ -526,9 +525,21 @@ def conv_forward_naive(x, w, b, conv_param):
     # TODO: Implement the convolutional forward pass.                         #
     # Hint: you can use the function np.pad for padding.                      #
     ###########################################################################
-    pad_width = conv_param['pad']
-    pad_x = np.pad(x, ((0, 0), (0, 0), (pad_width, pad_width), (pad_width, pad_width)), mode='constant')
-    
+    N, C, H, W = x.shape
+    F, _, HH, WW = w.shape
+    pad = conv_param['pad']
+    stride = conv_param['stride']
+    pad_x = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode='constant')
+    H_out = 1 + (H + 2 * pad - HH) // stride
+    W_out = 1 + (W + 2 * pad - WW) // stride
+    out = np.empty(shape=(N, F, H_out, W_out))
+    for n in range(N):
+        for f in range(F):
+            for ht in range(H_out):
+                for wt in range(W_out):
+                    out[n, f, ht, wt] = np.sum(pad_x[n, :, ht * stride:ht * stride + HH, wt * stride:wt * stride + WW]
+                                             * w[f, :, :, :]) + b[f]
+
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -553,7 +564,35 @@ def conv_backward_naive(dout, cache):
     ###########################################################################
     # TODO: Implement the convolutional backward pass.                        #
     ###########################################################################
-    pass
+    x, w, b, conv_param = cache
+    N, C, H, W = x.shape
+    F, _, HH, WW = w.shape
+    _, _, H_tag, W_tag = dout.shape
+    pad = conv_param['pad']
+    stride = conv_param['stride']
+    pad_x = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode='constant')
+    dw = np.empty(w.shape)
+    pad_dx = np.empty(pad_x.shape)
+
+    db = dout.sum(axis=(0, 2, 3))
+
+    for f in range(F):
+        for c in range(C):
+            for hh in range(HH):
+                for ww in range(WW):
+                    dw[f, c, hh, ww] = np.sum(pad_x[:, c, hh * stride:hh * stride + H_tag, ww * stride:ww * stride + W_tag]
+                                              * dout[:, f, :, :])
+
+    for n in range(N):
+        for f in range(F):
+            for ht in range(H_tag):
+                for wt in range(W_tag):
+                    print(dout[n, f, ht, wt])
+                    print(w[f, :, :, :])
+                    pad_dx[n, :, ht * stride:ht * stride + HH, wt * stride:wt * stride + WW] += \
+                        dout[n, f, ht, wt] * w[f, :, :, :]
+
+    dx = pad_dx[:, :, pad:pad + H, pad:pad + W]
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
